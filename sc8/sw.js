@@ -1,6 +1,6 @@
 // Caches the SC8 viewer so scanned links open with no internet.
 // Bump VERSION whenever index.html changes so phones pick up the new copy.
-const VERSION = "sc8-v1";
+const VERSION = "sc8-v2";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

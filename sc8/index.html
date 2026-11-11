@@ -64,18 +64,37 @@ function flagRow(sec, cells) {
   return false;
 }
 
+function niceDate(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
 function render(text) {
   const lines = text.split("\n");
-  const [tag, ver, site, date, by] = lines[0].split("|");
+  const [tag, ver, site, date, by, part] = lines[0].split("|");
   if (tag !== "SC8") throw new Error("Not an SC8 record");
-  let html = `<header><h1>${esc(site)}</h1><p>SC8 all-in-one daily record · ${esc(date)} · ${esc(by.replace("By:","Completed by "))}</p></header>`;
+  const v2 = ver === "v2";
+  let signed;
+  if (v2) {
+    const who = (by || "").replace("By:", "").trim();
+    if (who && who !== "-") {
+      const [ini, time] = who.split(" ");
+      signed = `Signed off by ${esc(ini)}${time ? " at " + esc(time) : ""}`;
+    } else signed = `<span class="err">Not signed off</span>`;
+  } else signed = esc((by || "").replace("By:", "Completed by "));
+  const [pi, pn] = (part || "1/1").split("/");
+  const partText = v2 && pn && pn !== "1" ? ` · <strong>code ${esc(pi)} of ${esc(pn)}</strong>` : "";
+  let html = `<header><h1>${esc(site)}</h1><p>SC8 all-in-one daily record · ${esc(niceDate(date))}</p><p>${signed}${partText}</p></header>`;
   let sec = null, rows = [], check = "";
   const flush = () => {
-    if (!sec || !HEADS[sec]) return;
+    if (!sec || !HEADS[sec] || !rows.length) return;
     html += `<section><h2>${LABELS[sec]}</h2><div class="wrap"><table${sec === "ACT" ? ' class="wrapcells"' : ""}><thead><tr>${HEADS[sec].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>`;
     for (const r of rows) {
       const c = r.split(",");
-      html += `<tr${flagRow(sec,c) ? ' class="flag"' : ""}>${c.map(v=>`<td${/^-?[\d.]+$/.test(v)?' class="num"':''}>${esc(v)}</td>`).join("")}</tr>`;
+      let flag;
+      if (v2) { flag = c[c.length - 1] === "!"; if (flag) c.pop(); }
+      else flag = flagRow(sec, c);
+      html += `<tr${flag ? ' class="flag"' : ""}>${c.map(v=>`<td${/^-?[\d.]+$/.test(v)?' class="num"':''}>${esc(v)}</td>`).join("")}</tr>`;
     }
     html += `</tbody></table></div></section>`;
   };
@@ -88,17 +107,26 @@ function render(text) {
   }
   flush();
   if (check) html += `<div class="note"><strong>Verification:</strong> ${esc(check)}</div>`;
-  html += `<footer>Decoded on this device from the QR code. Highlighted rows are outside limits: delivery rejected, chill above 5 °C, cook/reheat below 75 °C, hot hold below 63 °C.</footer>`;
+  if (v2 && pn && pn !== "1") {
+    html += `<div class="note">This is code ${esc(pi)} of ${esc(pn)} for this day. Each code holds part of the record - scan the others to see the rest.</div>`;
+  }
+  html += v2
+    ? `<footer>Decoded on this device from the QR code. Highlighted rows were outside the temperature limits set in ALMA; what was done about them is under Corrective actions.</footer>`
+    : `<footer>Decoded on this device from the QR code. Highlighted rows are outside limits: delivery rejected, chill above 5 °C, cook/reheat below 75 °C, hot hold below 63 °C.</footer>`;
   document.getElementById("out").innerHTML = html;
+  window.scrollTo(0, 0);
 }
 
-(async () => {
+async function load() {
   const out = document.getElementById("out");
   const data = location.hash.slice(1);
   if (!data) { out.innerHTML = `<p>No record in this link. Scan an SC8 QR code to view a record.</p><p>This viewer is saved on this device and works offline.</p>`; return; }
   try { render(await inflate(data)); }
   catch (e) { out.innerHTML = `<p class="err">Could not read this record: ${esc(e.message)}</p>`; }
-})();
+}
+load();
+// Scanning another code while this page is open only changes the part after '#'.
+window.addEventListener("hashchange", load);
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
