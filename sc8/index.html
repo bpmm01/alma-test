@@ -46,6 +46,12 @@ const HEADS = {
   HOT: ["Time","Item","Temp °C","Initials"],
   ACT: ["Ref","Issue","Action taken","Initials"]
 };
+// Column titles: the record names its columns on each section line, e.g. "#DEL time,supplier,item,batch,...".
+const COLS = {
+  time: "Time", supplier: "Supplier", item: "Item", batch: "Batch", temp: "Temp °C", ok: "Accepted",
+  init: "Initials", unit: "Unit", am: "AM °C", pm: "PM °C", type: "Type", ref: "Ref", issue: "Issue",
+  action: "Action taken"
+};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 async function inflate(b64url) {
@@ -85,10 +91,11 @@ function render(text) {
   const [pi, pn] = (part || "1/1").split("/");
   const partText = v2 && pn && pn !== "1" ? ` · <strong>code ${esc(pi)} of ${esc(pn)}</strong>` : "";
   let html = `<header><h1>${esc(site)}</h1><p>SC8 all-in-one daily record · ${esc(niceDate(date))}</p><p>${signed}${partText}</p></header>`;
-  let sec = null, rows = [], check = "";
+  let sec = null, rows = [], check = "", cols = null;
   const flush = () => {
     if (!sec || !HEADS[sec] || !rows.length) return;
-    html += `<section><h2>${LABELS[sec]}</h2><div class="wrap"><table${sec === "ACT" ? ' class="wrapcells"' : ""}><thead><tr>${HEADS[sec].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>`;
+    const heads = cols ? cols.map(c => COLS[c] || c) : HEADS[sec];
+    html += `<section><h2>${LABELS[sec]}</h2><div class="wrap"><table${sec === "ACT" ? ' class="wrapcells"' : ""}><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>`;
     for (const r of rows) {
       const c = r.split(",");
       let flag;
@@ -102,7 +109,9 @@ function render(text) {
     if (line.startsWith("#")) {
       flush(); rows = [];
       const t = line.slice(1, 4);
-      if (t === "CHK") { check = line.slice(5); sec = null; } else sec = t;
+      const names = line.slice(5).trim();
+      cols = names ? names.split(",").map(x => x.trim()) : null;
+      if (t === "CHK") { check = line.slice(5); sec = null; cols = null; } else sec = t;
     } else if (line.trim()) rows.push(line);
   }
   flush();
@@ -111,7 +120,7 @@ function render(text) {
     html += `<div class="note">This is code ${esc(pi)} of ${esc(pn)} for this day. Each code holds part of the record - scan the others to see the rest.</div>`;
   }
   html += v2
-    ? `<footer>Decoded on this device from the QR code. Highlighted rows were outside the temperature limits set in ALMA; what was done about them is under Corrective actions.</footer>`
+    ? `<footer>Decoded on this device from the QR code. Highlighted rows were outside the temperature limits set in ALMA; what was done about them is under Corrective actions. DEF = fridge/freezer defrosting. “held 38s” = cooked to the FSAI time/temperature. “(edited)” = corrected before sign-off; the tablet keeps who, when, why and the old values.</footer>`
     : `<footer>Decoded on this device from the QR code. Highlighted rows are outside limits: delivery rejected, chill above 5 °C, cook/reheat below 75 °C, hot hold below 63 °C.</footer>`;
   document.getElementById("out").innerHTML = html;
   window.scrollTo(0, 0);
